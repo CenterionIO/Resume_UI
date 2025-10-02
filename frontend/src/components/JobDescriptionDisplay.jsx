@@ -7,38 +7,31 @@ const JobDescriptionDisplay = ({ jobData, onTryAnother }) => {
     <div style={{
       width: '100%',
       maxWidth: '56rem',
-      backgroundColor: 'white',
-      borderRadius: '0.75rem',
-      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-      padding: '2rem',
-      marginTop: '2rem'
+      color: 'white',
+      padding: '0',
+      marginTop: '0'
     }}>
-      <h3 style={{
-        fontSize: '1.5rem',
-        fontWeight: '600',
-        color: '#1f2937',
-        marginBottom: '1rem',
-        borderBottom: '2px solid #e5e7eb',
-        paddingBottom: '0.5rem'
-      }}>
-        📋 Job Description
-      </h3>
+      {/* Job Description in white text */}
       <div style={{
         maxHeight: '400px',
         overflowY: 'auto',
         fontSize: '0.875rem',
         lineHeight: '1.5',
-        color: '#374151',
-        backgroundColor: '#f9fafb',
-        padding: '1rem',
+        color: 'white',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        padding: '1.5rem',
         borderRadius: '0.5rem',
         whiteSpace: 'pre-wrap',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        marginTop: '1rem'
       }}>
         {jobData}
       </div>
+      
+      {/* Action buttons */}
       <div style={{
-        marginTop: '1rem',
+        marginTop: '1.5rem',
         display: 'flex',
         gap: '1rem'
       }}>
@@ -61,11 +54,11 @@ const JobDescriptionDisplay = ({ jobData, onTryAnother }) => {
           onClick={onTryAnother}
           style={{
             background: 'transparent',
-            color: '#6b7280',
+            color: 'white',
             fontWeight: '500',
             padding: '0.75rem 1.5rem',
             borderRadius: '0.5rem',
-            border: '1px solid #d1d5db',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
             cursor: 'pointer',
             fontSize: '0.875rem'
           }}

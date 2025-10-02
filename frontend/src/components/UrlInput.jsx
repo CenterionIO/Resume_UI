@@ -2,13 +2,40 @@ import { useState } from 'react';
 
 const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   const [url, setUrl] = useState('');
-  const [progressIndex, setProgressIndex] = useState(0);
+  const [progressMessages, setProgressMessages] = useState([]);
   const [jobData, setJobData] = useState(null);
+
+  // Progress update text configuration
+  const progressText = {
+    // WebSocket connection messages
+    wsConnecting: 'Testing backend connection...',
+    wsConnected: '✅ WebSocket connected',
+    wsConnectionFailed: '❌ WebSocket connection failed',
+    wsError: '❌ Error setting up WebSocket:',
+    
+    // Scraping process messages
+    scrapingComplete: '✅ Scraping completed!',
+    scrapingError: '❌ Scraping error:',
+    
+    // Session messages
+    newSession: '🔐 New session created',
+    sessionFound: '🔐 Existing session found',
+    
+    // Generic messages
+    starting: 'Starting...',
+    connectionFailed: 'Connection failed',
+    
+    // Mock data fallback
+    mockDataFallback: (url) => `WebSocket connection failed. Using mock data for: ${url}\n\n🏢 **Company:** Example Corp\n📝 **Title:** Senior Developer\n📍 **Location:** Remote\n💰 **Salary:** $120,000 - $160,000\n\nThis is mock data because the backend connection failed.`,
+    
+    // Error fallback
+    errorFallback: (error, url) => `Error: ${error}\n\nUsing fallback mock data for: ${url}`
+  };
 
   // Handler for "Try Another Job" button
   const handleTryAnother = () => {
     setUrl('');
-    setProgressIndex(0);
+    setProgressMessages([]);
     setJobData(null);
     onSubmissionChange(false);
   };
@@ -20,15 +47,15 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     console.log('Submitting URL:', url);
     onSubmissionChange(true);
     setJobData(null);
-    setProgressIndex(0);
+    setProgressMessages([]);
 
     try {
-      console.log('Testing backend connection...');
+      console.log(progressText.wsConnecting);
 
       const ws = new WebSocket('ws://localhost:8000/ws/scrape-progress');
 
       ws.onopen = () => {
-        console.log('✅ WebSocket connected');
+        console.log(progressText.wsConnected);
         ws.send(JSON.stringify({ url: url }));
       };
 
@@ -39,36 +66,41 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
           if (data.message) {
             console.log('Progress message:', data.message);
-            if (data.message.includes("Checking LinkedIn session") || data.message.includes("Attempt")) setProgressIndex(0);
-            else if (data.message.includes("signing in") || data.message.includes("Logging")) setProgressIndex(1);
-            else if (data.message.includes("Login successful")) setProgressIndex(2);
-            else if (data.message.includes("Navigating to Job Posting") || data.message.includes("job URL")) setProgressIndex(3);
-            else if (data.message.includes("Extracting") || data.message.includes("Fetching")) setProgressIndex(4);
-            else if (data.message.includes("Extraction complete") || data.message.includes("Readying")) setProgressIndex(5);
+            setProgressMessages(prev => [...prev, data.message]);
           }
 
           if (data.type === 'complete') {
-            console.log('✅ Scraping completed');
+            console.log(progressText.scrapingComplete);
             setJobData(data.job_data || "Job description content would appear here");
-            setProgressIndex(6);
+            setProgressMessages(prev => [...prev, progressText.scrapingComplete]);
             ws.close();
           }
 
           if (data.type === 'error') {
-            console.error('❌ Scraping error:', data.error);
-            setProgressIndex(-1);
+            console.error(progressText.scrapingError, data.error);
+            setProgressMessages(prev => [...prev, `${progressText.scrapingError} ${data.error}`]);
             ws.close();
           }
+
+          if (data.type === 'new_session') {
+            console.log('Session update:', data.message);
+            setProgressMessages(prev => [...prev, `${progressText.newSession}: ${data.message}`]);
+          }
+
+          if (data.type === 'session_found') {
+            console.log('Session update:', data.message);
+            setProgressMessages(prev => [...prev, `${progressText.sessionFound}: ${data.message}`]);
+          }
+
         } catch (parseError) {
           console.error('Error parsing WebSocket message:', parseError);
         }
       };
 
       ws.onerror = (error) => {
-        console.error('❌ WebSocket connection error:', error);
-        setProgressIndex(-1);
-        // Fallback with mock data
-        setJobData(`WebSocket connection failed. Using mock data for: ${url}\n\n🏢 **Company:** Example Corp\n📝 **Title:** Senior Developer\n📍 **Location:** Remote\n💰 **Salary:** $120,000 - $160,000\n\nThis is mock data because the backend connection failed.`);
+        console.error(progressText.wsConnectionFailed, error);
+        setProgressMessages(prev => [...prev, progressText.wsConnectionFailed]);
+        setJobData(progressText.mockDataFallback(url));
       };
 
       ws.onclose = (event) => {
@@ -76,22 +108,15 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
       };
 
     } catch (error) {
-      console.error('❌ Error setting up WebSocket:', error);
-      setProgressIndex(-1);
-      setJobData(`Error: ${error.message}\n\nUsing fallback mock data for: ${url}`);
+      console.error(progressText.wsError, error);
+      setProgressMessages(prev => [...prev, `${progressText.wsError} ${error.message}`]);
+      setJobData(progressText.errorFallback(error.message, url));
     }
   };
 
-  // ProgressDisplay component
-  const ProgressDisplay = ({ progressIndex, jobData }) => {
-    const messages = [
-      "Navigating to URL...",
-      "Logging into LinkedIn...", 
-      "Login success...",
-      "Navigating to Job Posting...",
-      "Fetching job description...",
-      "Readying job description"
-    ];
+  // ProgressDisplay component - Updated with left alignment and real messages
+  const ProgressDisplay = ({ progressMessages, jobData }) => {
+    const currentMessage = progressMessages.length > 0 ? progressMessages[progressMessages.length - 1] : progressText.starting;
 
     return (
       <div style={{
@@ -100,7 +125,8 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         flex: 1,
         overflowY: 'auto',
         marginBottom: '1rem',
-        textAlign: 'center'
+        textAlign: 'left',
+        paddingLeft: '1rem'
       }}>
         <div style={{
           background: 'linear-gradient(90deg, #ffffff, #d1d5db, #ffffff)',
@@ -115,13 +141,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
           fontSize: '1.125rem',
           fontWeight: '500'
         }}>
-          {progressIndex === -1 ? (
-            "❌ Error scraping job. Please try again."
-          ) : progressIndex === 6 ? (
-            jobData ? "✅ Job description ready!" : "Processing..."
-          ) : (
-            messages[progressIndex] || "Starting..."
-          )}
+          {currentMessage}
         </div>
       </div>
     );
@@ -332,13 +352,16 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'flex-start',
-        padding: '1.5rem 1rem 3rem 1rem'
+        padding: '1.5rem 1rem 3rem 1rem',
+        width: '100%',
+        maxWidth: '56rem',
+        margin: '0 auto'
       }}>
         <InitialContent url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isVisible={!isSubmitted} />
 
-        {isSubmitted && <ProgressDisplay progressIndex={progressIndex} jobData={jobData} />}
+        {isSubmitted && <ProgressDisplay progressMessages={progressMessages} jobData={jobData} />}
 
         <JobDescriptionDisplay jobData={jobData} onTryAnother={handleTryAnother} />
       </main>

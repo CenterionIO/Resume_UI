@@ -1,77 +1,82 @@
-import { useState, useEffect, useRef } from 'react';
+// frontend/src/hooks/useWebSocket.js
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-export const useWebSocket = (sessionId) => {
-  const [messages, setMessages] = useState([]);
+export const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const ws = useRef(null);
+  const [error, setError] = useState(null);
+  const websocket = useRef(null);
 
-  useEffect(() => {
-    if (!sessionId) {
-      setIsConnected(false);
-      return;
-    }
-
-    const connect = () => {
-      try {
-        // Use the same origin for WebSocket to avoid CORS issues
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host; // This will be localhost:3000 (Vite)
-        const wsUrl = `ws://localhost:8000/ws`;
+  // Use useCallback to prevent unnecessary re-renders
+  const connect = useCallback((url, onMessage, onError, onClose) => {
+    try {
+      setError(null);
+      const sessionId = localStorage.getItem('linkedin_session_id');
+      websocket.current = new WebSocket('ws://localhost:8000/ws/scrape-progress');
+      
+      websocket.current.onopen = () => {
+        setIsConnected(true);
+        console.log('🔗 WebSocket connected');
         
-        console.log('Connecting to WebSocket:', wsUrl);
-        
-        ws.current = new WebSocket(wsUrl);
-
-        ws.current.onopen = () => {
-          console.log('WebSocket connected successfully');
-          setIsConnected(true);
+        const message = {
+          url: url,
+          session_id: sessionId
         };
+        websocket.current.send(JSON.stringify(message));
+      };
 
-        ws.current.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('WebSocket message received:', data);
-            setMessages(prev => [...prev, {
-              ...data,
-              id: Date.now() + Math.random(),
-              status: data.message === 'complete' ? 'completed' : 'active'
-            }]);
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+      websocket.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📨 WebSocket message:', data);
+          
+          // Handle session persistence
+          if (data.type === 'new_session' || data.type === 'session_found') {
+            localStorage.setItem('linkedin_session_id', data.session_id);
+            console.log('💾 Session ID stored:', data.session_id);
           }
-        };
+          
+          if (onMessage) onMessage(data);
+        } catch (parseError) {
+          console.error('❌ Failed to parse WebSocket message:', parseError);
+        }
+      };
 
-        ws.current.onclose = (event) => {
-          console.log('WebSocket disconnected:', event.code, event.reason);
-          setIsConnected(false);
-          // Don't auto-reconnect for now to avoid spam
-        };
+      websocket.current.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setError(error);
+        if (onError) onError(error);
+      };
 
-        ws.current.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          setIsConnected(false);
-        };
-
-      } catch (error) {
-        console.error('WebSocket connection failed:', error);
+      websocket.current.onclose = (event) => {
         setIsConnected(false);
-      }
-    };
-
-    connect();
-
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
-    };
-  }, [sessionId]);
-
-  const sendMessage = (message) => {
-    if (ws.current && isConnected) {
-      ws.current.send(JSON.stringify(message));
+        console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+        if (onClose) onClose(event);
+      };
+    } catch (error) {
+      console.error('❌ WebSocket connection failed:', error);
+      setError(error);
+      if (onError) onError(error);
     }
-  };
+  }, []);
 
-  return { messages, isConnected, sendMessage };
+  const disconnect = useCallback(() => {
+    if (websocket.current) {
+      websocket.current.close(1000, 'User initiated disconnect');
+      websocket.current = null;
+    }
+  }, []);
+
+  // Auto-cleanup on unmount
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
+
+  return {
+    connect,
+    disconnect,
+    isConnected,
+    error
+  };
 };

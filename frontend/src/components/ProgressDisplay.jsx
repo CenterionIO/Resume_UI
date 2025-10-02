@@ -14,10 +14,9 @@ const ProgressDisplay = ({ progressIndex, jobData }) => {
     <div style={{
       width: '100%',
       maxWidth: '48rem',
-      flex: 1,
-      overflowY: 'auto',
-      marginBottom: '1rem',
-      textAlign: 'center'
+      textAlign: 'center',
+      padding: '0',
+      marginBottom: '0'
     }}>
       <div style={{
         background: 'linear-gradient(90deg, #ffffff, #d1d5db, #ffffff)',
