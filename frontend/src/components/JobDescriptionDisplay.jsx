@@ -9,63 +9,39 @@ const JobDescriptionDisplay = ({ jobData, onTryAnother }) => {
       maxWidth: '56rem',
       color: 'white',
       padding: '0',
-      marginTop: '0'
+      marginTop: '0',
+      backgroundColor: 'transparent', // Ensure no background
     }}>
-      {/* Job Description in white text */}
+      {/* Job Description - Clean styling without borders or scrollbar */}
       <div style={{
         maxHeight: '400px',
-        overflowY: 'auto',
+        overflowY: 'auto', // Keep scroll functionality but we'll hide the scrollbar
         fontSize: '0.875rem',
         lineHeight: '1.5',
         color: 'white',
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        padding: '1.5rem',
-        borderRadius: '0.5rem',
+        backgroundColor: 'transparent', // Remove the semi-transparent background
+        padding: '0', // Remove padding
+        borderRadius: '0', // Remove border radius
         whiteSpace: 'pre-wrap',
         fontFamily: 'monospace',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
-        marginTop: '1rem'
+        border: 'none', // Remove border
+        marginTop: '1rem',
+        // Hide scrollbar but keep functionality
+        scrollbarWidth: 'none', // Firefox
+        msOverflowStyle: 'none', // IE/Edge
       }}>
+        {/* Hide scrollbar for Webkit browsers (Chrome, Safari) */}
+        <style>
+          {`
+            div::-webkit-scrollbar {
+              display: none;
+            }
+          `}
+        </style>
         {jobData}
       </div>
       
-      {/* Action buttons */}
-      <div style={{
-        marginTop: '1.5rem',
-        display: 'flex',
-        gap: '1rem'
-      }}>
-        <button style={{
-          background: 'linear-gradient(90deg, #10b981, #059669, #047857)',
-          backgroundSize: '200% 200%',
-          animation: 'gradientAnimation 3s ease infinite',
-          color: 'white',
-          fontWeight: '500',
-          padding: '0.75rem 1.5rem',
-          borderRadius: '0.5rem',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: '0.875rem'
-        }}>
-          Generate Resume from this Job
-        </button>
-        
-        <button 
-          onClick={onTryAnother}
-          style={{
-            background: 'transparent',
-            color: 'white',
-            fontWeight: '500',
-            padding: '0.75rem 1.5rem',
-            borderRadius: '0.5rem',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            cursor: 'pointer',
-            fontSize: '0.875rem'
-          }}
-        >
-          Try Another Job
-        </button>
-      </div>
+      {/* Buttons removed as requested */}
     </div>
   );
 };
