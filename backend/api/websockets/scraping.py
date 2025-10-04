@@ -2,7 +2,7 @@
 import json
 import uuid
 from fastapi import WebSocket # type: ignore
-from modules.scraping.platforms.linkedin_scraper import linkedin_scraper
+from modules.linkedin_scraper import linkedin_scraper
 from utils.session_manager import session_manager
 
 class ScrapingWebSocketHandler:
