@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import JobDescriptionDisplay from "./JobDescriptionDisplay";
 
 const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   const [url, setUrl] = useState('');
   const [progressMessages, setProgressMessages] = useState([]);
   const [jobData, setJobData] = useState(null);
+  const [showParseModal, setShowParseModal] = useState(false);
+  const [parseMode, setParseMode] = useState('DOM Parse');
 
   // Progress update text configuration
   const progressText = {
@@ -70,8 +72,8 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
           }
 
           if (data.type === 'error') {
-            console.error(progressText.scrapingError, data.error);
-            setProgressMessages(prev => [...prev, `${progressText.scrapingError} ${data.error}`]);
+            console.error(progressText.scrapingError, data.message);
+            setProgressMessages(prev => [...prev, `${progressText.scrapingError} ${data.message}`]);
             ws.close();
           }
 
@@ -140,15 +142,31 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     );
   };
 
-  // UrlInputForm component
-  const UrlInputForm = ({ url, onUrlChange, onSubmit, isBottom = false }) => {
+  // UrlInputForm component (memoized)
+  const UrlInputForm = memo(({ url, onUrlChange, onSubmit, isBottom = false, showParseModal, setShowParseModal, parseMode }) => {
     const inputStyle = {
       flex: 1,
-      padding: '1rem',
-      fontSize: '1.125rem',
+      padding: '0.75rem 0.5rem',
+      fontSize: '1rem',
+      border: 'none',
+      outline: 'none',
+      background: 'transparent'
+    };
+
+    const parseButtonStyle = {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '2rem',
+      height: '2rem',
       borderRadius: '0.5rem',
-      border: '1px solid #d1d5db',
-      outline: 'none'
+      border: '0.5px solid #e5e7eb',
+      backgroundColor: 'transparent',
+      color: '#9ca3af',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      marginLeft: '0.25rem',
+      flexShrink: 0
     };
 
     const buttonStyle = {
@@ -166,20 +184,91 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     };
 
     return (
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: '0.75rem' }}>
-        <input 
-          type="text" 
-          value={url}
-          onChange={(e) => onUrlChange(e.target.value)}
-          placeholder="LinkedIn, Indeed, Glassdoor URL..." 
-          style={inputStyle}
-        />
-        <button type="submit" style={buttonStyle}>
-          {isBottom ? '→' : 'Generate Resume'}
-        </button>
-      </form>
+      <div style={{ position: 'relative', width: '100%' }}>
+  <form onSubmit={onSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'white', padding: '0.35rem 0.5rem', borderRadius: '0.5rem', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', border: '1px solid #e6e6e6' }}>
+          {/* Left plus button (open popover) */}
+          <button
+            type="button"
+            onClick={() => setShowParseModal(!showParseModal)}
+            style={{
+              width: '2.25rem',
+              height: '2.25rem',
+              borderRadius: '0.5rem',
+              border: 'none',
+              background: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '0.5rem',
+              cursor: 'pointer'
+            }}
+            aria-label="Open tools"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 5v14M5 12h14" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => onUrlChange(e.target.value)}
+            placeholder="LinkedIn, Indeed, Glassdoor URL..."
+            style={inputStyle}
+          />
+
+          {/* only show submit in the bottom (fixed) input */}
+          {isBottom && (
+            <button type="submit" style={buttonStyle}>
+              {isBottom ? '→' : 'Generate Resume'}
+            </button>
+          )}
+        </form>
+
+        {/* Popover content anchored to the left button */}
+        {showParseModal && (
+          <div style={{ position: 'absolute', top: '-0.5rem', left: '0.5rem', zIndex: 1500, transform: 'translateY(-100%)' }}>
+            <div style={{ width: '220px', background: 'white', borderRadius: '0.75rem', boxShadow: '0 12px 30px rgba(2,6,23,0.08)', padding: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                {/* menu items matching screenshot */}
+                <button onClick={() => { setParseMode('Add photos & files'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15V9a3 3 0 0 0-3-3H6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ color: '#111827' }}>Add photos & files</span>
+                </button>
+
+                <button onClick={() => { setParseMode('Deep research'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 21l-4.35-4.35" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="11" cy="11" r="6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ color: '#111827' }}>Deep research</span>
+                </button>
+
+                <button onClick={() => { setParseMode('Create image'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#111827" strokeWidth="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="#111827"/></svg>
+                  <span style={{ color: '#111827' }}>Create image</span>
+                </button>
+
+                <button onClick={() => { setParseMode('Agent mode'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v4" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 7h10v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V7z" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ color: '#111827' }}>Agent mode</span>
+                </button>
+
+                <button onClick={() => { setParseMode('Add sources'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7.07 0l1.42-1.42" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L5.51 12.42" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ color: '#111827' }}>Add sources</span>
+                </button>
+
+                <div style={{ height: '8px', borderTop: '1px solid #f3f4f6', margin: '6px 0' }} />
+
+                <button onClick={() => setShowParseModal(false)} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', color: '#6b7280' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span>More</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
-  };
+  });
 
   // InitialContent component
   const InitialContent = ({ url, onUrlChange, onSubmit, isVisible }) => {
@@ -199,7 +288,37 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
       }}>
         <div style={{ padding: '2rem', width: '100%' }}>
           <div style={{ marginBottom: '1.5rem' }}>
-            <UrlInputForm url={url} onUrlChange={onUrlChange} onSubmit={onSubmit} />
+            {/* Outer chat container: input on left, Generate Resume on right */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ flex: 1 }}>
+                <UrlInputForm url={url} onUrlChange={setUrl} onSubmit={onSubmit} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
+              </div>
+
+              <div style={{ flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => onSubmit({ preventDefault: () => {} })}
+                  style={{
+                    background: 'linear-gradient(90deg, #7c3aed, #6d28d9, #5b21b6)',
+                    backgroundSize: '200% 200%',
+                    animation: 'gradientAnimation 3s ease infinite',
+                    color: 'white',
+                    fontWeight: '500',
+                    height: '2.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 1rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    fontSize: '1rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Generate Resume
+                </button>
+              </div>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', marginLeft: '0.5rem' }}>
@@ -262,6 +381,8 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         </p>
       </header>
 
+      {/* Parse Mode Popover (anchored to input) - rendered inside the UrlInputForm */}
+
       {/* Main Content */}
       <main style={{
         flex: 1,
@@ -295,7 +416,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         width: '90%',
         maxWidth: '56rem',
         backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '0.75rem',
+        borderRadius: '0.5rem',
         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         border: '1px solid rgba(255, 255, 255, 0.2)',
         padding: '1.5rem',
@@ -303,7 +424,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         transition: 'all 0.5s',
         display: isSubmitted ? 'block' : 'none'
       }}>
-        <UrlInputForm url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isBottom={true} />
+        <UrlInputForm url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isBottom={true} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
       </div>
     </div>
   );

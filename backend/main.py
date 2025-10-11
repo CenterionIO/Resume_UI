@@ -1,9 +1,23 @@
 import os
 import json
 import logging
+from pathlib import Path
+from dotenv import load_dotenv  # type: ignore
 from fastapi import FastAPI, HTTPException, Request, WebSocket  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
-from platforms.linkedin.parsers.playwright_client import fetch_and_parse_job  # unified client
+from pydantic import BaseModel  # type: ignore
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+# Import parsers and scrapers
+from platforms.linkedin.parsers.parser import parse_linkedin_job
+from platforms.linkedin.utils.formatter import format_job_post
+from platforms.linkedin.scrapers.url_scraper import fetch_job_html
+
+# Import LinkedIn bulk router
+from platforms.linkedin.utils import linkedin_bulk
 
 # -------------------------------------------------
 # App Setup
@@ -19,9 +33,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register Routers
+app.include_router(linkedin_bulk.router, prefix="/platforms/linkedin")
+
 # Logger Setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Pydantic Model
+class ParseRequest(BaseModel):
+    html_content: str
+    parser_type: str = "linkedin"
+
+# Parser Registry
+PARSERS = {
+    "linkedin": parse_linkedin_job,
+}
 
 # -------------------------------------------------
 # Healthcheck
@@ -34,28 +61,42 @@ async def health():
 # Job Parser Endpoint
 # -------------------------------------------------
 @app.post("/parse")
-async def parse_job(request: Request):
+async def parse_html(request: ParseRequest):
     """
     Accepts JSON body:
       {
-        "url": "<linkedin_job_url>",
-        "parser": "linkedin_soup" | "playwright" | "hybrid"
+        "html_content": "<html>...</html>",
+        "parser_type": "linkedin"
       }
     """
     try:
-        data = await request.json()
-        url = data.get("url")
-        parser_override = data.get("parser", "linkedin_soup")
+        parser_type = request.parser_type.lower()
+        logger.info(f"🔍 Parsing HTML with parser: {parser_type}")
+        logger.info(f"HTML length: {len(request.html_content)}")
 
-        if not url:
-            raise HTTPException(status_code=400, detail="Missing 'url' in request body")
+        # Validate parser type
+        if parser_type not in PARSERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid parser type: {parser_type}. Available: {list(PARSERS.keys())}"
+            )
 
-        logger.info(f"🔍 Parsing job: {url} using parser: {parser_override}")
-        result = await fetch_and_parse_job(url, parser_override=parser_override)
-        return {"status": "success", "parser": parser_override, "data": result}
+        # Parse the HTML
+        parser_fn = PARSERS[parser_type]
+        parsed_data = parser_fn(request.html_content)
+
+        # Format the parsed data
+        formatted_output = format_job_post(parsed_data)
+
+        return {
+            "status": "success",
+            "parser": parser_type,
+            "data": formatted_output,
+            "metadata": parsed_data
+        }
 
     except Exception as e:
-        logger.error(f"❌ Error parsing job: {e}")
+        logger.error(f"❌ Error parsing HTML: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # -------------------------------------------------
@@ -74,42 +115,79 @@ async def scrape_progress_socket(websocket: WebSocket):
             try:
                 data = json.loads(raw)
                 url = data.get("url")
-                parser = data.get("parser", "linkedin_soup")
+                html_content = data.get("html_content")
+                parser_type = data.get("parser", "linkedin")
 
-                if not url:
+                # Check if URL or HTML provided
+                if not url and not html_content:
                     await websocket.send_text(json.dumps({
-                        "status": "error",
-                        "message": "Missing 'url' in payload"
+                        "type": "error",
+                        "message": "Missing 'url' or 'html_content' in payload"
                     }))
                     continue
 
-                await websocket.send_text(json.dumps({
-                    "status": "started",
-                    "message": f"Starting parser: {parser}"
-                }))
+                # If URL provided, fetch HTML first
+                if url:
+                    await websocket.send_text(json.dumps({
+                        "type": "progress",
+                        "message": f"🌐 Fetching job from URL..."
+                    }))
 
-                parsed = await fetch_and_parse_job(url, parser_override=parser)
+                    try:
+                        html_content = await fetch_job_html(url)
+                        await websocket.send_text(json.dumps({
+                            "type": "progress",
+                            "message": f"✅ Page loaded, parsing with {parser_type}..."
+                        }))
+                    except Exception as e:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": f"Failed to fetch URL: {str(e)}"
+                        }))
+                        continue
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "progress",
+                        "message": f"Parsing with {parser_type}..."
+                    }))
+
+                # Validate parser
+                if parser_type not in PARSERS:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"Invalid parser: {parser_type}"
+                    }))
+                    continue
+
+                # Parse HTML
+                parser_fn = PARSERS[parser_type]
+                parsed_data = parser_fn(html_content)
+
+                # Format output
+                formatted_output = format_job_post(parsed_data)
+
+                logger.info(f"✅ Parsed: {parsed_data.get('company_name')} - {parsed_data.get('title')}")
+                logger.info(f"✅ Formatted output length: {len(formatted_output)}")
 
                 await websocket.send_text(json.dumps({
-                    "status": "complete",
+                    "type": "complete",
                     "message": "✅ Job description ready",
-                    "data": parsed
+                    "job_data": formatted_output
                 }))
 
             except json.JSONDecodeError:
                 await websocket.send_text(json.dumps({
-                    "status": "error",
+                    "type": "error",
                     "message": "Invalid JSON received"
                 }))
             except Exception as e:
                 logger.error(f"❌ Parser error: {e}")
                 await websocket.send_text(json.dumps({
-                    "status": "error",
+                    "type": "error",
                     "message": str(e)
                 }))
     except Exception as e:
         logger.warning(f"⚠️ WebSocket closed: {e}")
-        await websocket.close()
 
 # -------------------------------------------------
 # Run locally
