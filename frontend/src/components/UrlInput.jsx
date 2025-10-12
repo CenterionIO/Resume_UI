@@ -1,5 +1,126 @@
-import React, { useState, memo } from "react";
+import React, { useState, memo, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
+import { createPortal } from 'react-dom';
 import JobDescriptionDisplay from "./JobDescriptionDisplay";
+
+// Move BulkInputForm to module scope so it isn't re-declared on every UrlInput render.
+const BulkInputForm = memo(forwardRef(({
+  showParseModal,
+  setShowParseModal,
+  setActivePopoverAnchor,
+  activePopoverAnchor,
+  onBulkSubmit
+}, ref) => {
+  const toolsButtonRef = useRef(null);
+
+  const [localKeyword, setLocalKeyword] = useState('');
+  const [localLocation, setLocalLocation] = useState('');
+  const [localPages, setLocalPages] = useState(1);
+
+  const bulkKeywordRef = useRef(null);
+  const bulkLocationRef = useRef(null);
+
+  useEffect(() => {
+    console.log('[BulkInputForm] mounted');
+    return () => console.log('[BulkInputForm] unmounted');
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    submit: () => {
+      if (typeof onBulkSubmit === 'function') {
+        onBulkSubmit(localKeyword, localLocation, localPages);
+      }
+    }
+  }), [localKeyword, localLocation, localPages, onBulkSubmit]);
+
+  return (
+    <div style={{ position: 'relative', background: 'white', padding: '1rem', borderRadius: '0.5rem', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', border: '1px solid #e6e6e6' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <button
+          ref={toolsButtonRef}
+          type="button"
+          onClick={() => {
+            if (!showParseModal || activePopoverAnchor !== 'bulk') {
+              setActivePopoverAnchor('bulk');
+              setShowParseModal(true);
+            } else {
+              setShowParseModal(false);
+              setActivePopoverAnchor(null);
+            }
+          }}
+          style={{
+            width: '2.25rem',
+            height: '2.25rem',
+            borderRadius: '0.5rem',
+            border: 'none',
+            background: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+          aria-label="Open tools"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 5v14M5 12h14" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <input
+          type="text"
+          value={localKeyword}
+          onChange={(e) => setLocalKeyword(e.target.value)}
+          placeholder="Job title (e.g., AI Engineer)"
+          ref={bulkKeywordRef}
+          style={{
+            flex: 1,
+            padding: '0.5rem',
+            fontSize: '1rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.375rem',
+            outline: 'none'
+          }}
+        />
+        <input
+          type="text"
+          value={localLocation}
+          onChange={(e) => setLocalLocation(e.target.value)}
+          placeholder="Location (e.g., United States)"
+          ref={bulkLocationRef}
+          style={{
+            flex: 1,
+            padding: '0.5rem',
+            fontSize: '1rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.375rem',
+            outline: 'none'
+          }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', paddingLeft: '2.75rem' }}>
+        <label style={{ fontSize: '0.875rem', color: '#6b7280' }}>Pages:</label>
+        <select
+          value={localPages}
+          onChange={(e) => setLocalPages(parseInt(e.target.value))}
+          style={{
+            padding: '0.5rem',
+            fontSize: '0.875rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.375rem',
+            outline: 'none',
+            background: 'white'
+          }}
+        >
+          {[1, 2, 3, 4, 5].map(num => (
+            <option key={num} value={num}>{num}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          (~{localPages * 10} jobs)
+        </span>
+      </div>
+    </div>
+  );
+}));
 
 const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   const [url, setUrl] = useState('');
@@ -7,6 +128,14 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   const [jobData, setJobData] = useState(null);
   const [showParseModal, setShowParseModal] = useState(false);
   const [parseMode, setParseMode] = useState('DOM Parse');
+  const [activePopoverAnchor, setActivePopoverAnchor] = useState(null);
+
+  // Bulk scrape state
+  const [bulkKeyword, setBulkKeyword] = useState('');
+  const [bulkLocation, setBulkLocation] = useState('');
+  const [bulkPages, setBulkPages] = useState(1);
+  const [bulkJobs, setBulkJobs] = useState([]);
+  const bulkInputRef = useRef(null);
 
   // Progress update text configuration
   const progressText = {
@@ -29,7 +158,79 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     setUrl('');
     setProgressMessages([]);
     setJobData(null);
+    setBulkJobs([]);
     onSubmissionChange(false);
+  };
+
+  // Bulk submit that accepts parameters (used by BulkInputForm via ref)
+  const handleBulkSubmit = (keyword, location, pages) => {
+    if (!keyword || !location) return;
+
+    console.log('Submitting bulk scrape:', keyword, location, pages);
+    onSubmissionChange(true);
+    setJobData(null);
+    setBulkJobs([]);
+    setProgressMessages([]);
+
+    try {
+      console.log('Connecting to bulk scrape WebSocket...');
+
+      const ws = new WebSocket('ws://localhost:8000/ws/bulk-scrape');
+
+      ws.onopen = () => {
+        console.log('✅ Bulk scrape WebSocket connected');
+        ws.send(JSON.stringify({
+          keyword,
+          location,
+          pages
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        console.log('📨 Bulk scrape message:', event.data);
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.message) {
+            console.log('Progress message:', data.message);
+            setProgressMessages(prev => [...prev, data.message]);
+          }
+
+          if (data.status === 'job') {
+            console.log('Job found:', data.data.title);
+            setBulkJobs(prev => [...prev, data.data]);
+          }
+
+          if (data.status === 'complete') {
+            console.log('✅ Bulk scraping complete');
+            setProgressMessages(prev => [...prev, data.message]);
+            ws.close();
+          }
+
+          if (data.status === 'error') {
+            console.error('❌ Bulk scrape error:', data.message);
+            setProgressMessages(prev => [...prev, `❌ Error: ${data.message}`]);
+            ws.close();
+          }
+
+        } catch (parseError) {
+          console.error('Error parsing bulk scrape message:', parseError);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('❌ Bulk scrape WebSocket error:', error);
+        setProgressMessages(prev => [...prev, '❌ WebSocket connection failed']);
+      };
+
+      ws.onclose = (event) => {
+        console.log('Bulk scrape WebSocket closed:', event.code, event.reason);
+      };
+
+    } catch (error) {
+      console.error('❌ Error setting up bulk scrape WebSocket:', error);
+      setProgressMessages(prev => [...prev, `❌ Error: ${error.message}`]);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -142,8 +343,10 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     );
   };
 
+  
+
   // UrlInputForm component (memoized)
-  const UrlInputForm = memo(({ url, onUrlChange, onSubmit, isBottom = false, showParseModal, setShowParseModal, parseMode }) => {
+  const UrlInputForm = memo(({ instanceId = 'top', url, onUrlChange, onSubmit, isBottom = false, showParseModal, setShowParseModal, parseMode }) => {
     const inputStyle = {
       flex: 1,
       padding: '0.75rem 0.5rem',
@@ -183,13 +386,65 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
       cursor: 'pointer'
     };
 
+  const toolsButtonRef = useRef(null);
+    const [popoverStyle, setPopoverStyle] = useState({ top: 0, left: 0, visibility: 'hidden' });
+
+    useEffect(() => {
+      if (!showParseModal) return;
+
+      const updatePosition = () => {
+        const btn = toolsButtonRef.current;
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const popoverWidth = 220;
+        const margin = 8;
+        let left = rect.left + window.scrollX;
+        // prefer left aligned to button, but ensure within viewport
+        if (left + popoverWidth + margin > window.innerWidth) {
+          left = window.innerWidth - popoverWidth - margin;
+        }
+        if (left < margin) left = margin;
+
+        // position above the button if there's space, otherwise below
+        let top = rect.top + window.scrollY - 8; // prefer above
+        const popoverHeight = 260; // approximate
+        if (top - popoverHeight < 0) {
+          // not enough space above, place below
+          top = rect.bottom + window.scrollY + 8;
+        } else {
+          // move up so popover sits above button
+          top = rect.top + window.scrollY - popoverHeight - 8 + rect.height;
+        }
+
+        setPopoverStyle({ top, left, visibility: 'visible' });
+      };
+
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+      };
+    }, [showParseModal, activePopoverAnchor]);
+
     return (
       <div style={{ position: 'relative', width: '100%' }}>
   <form onSubmit={onSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'white', padding: '0.35rem 0.5rem', borderRadius: '0.5rem', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', border: '1px solid #e6e6e6' }}>
           {/* Left plus button (open popover) */}
           <button
+            ref={toolsButtonRef}
             type="button"
-            onClick={() => setShowParseModal(!showParseModal)}
+            onClick={() => {
+              // toggle this instance as the active anchor
+              if (!showParseModal || activePopoverAnchor !== instanceId) {
+                setActivePopoverAnchor(instanceId);
+                setShowParseModal(true);
+              } else {
+                setShowParseModal(false);
+                setActivePopoverAnchor(null);
+              }
+            }}
             style={{
               width: '2.25rem',
               height: '2.25rem',
@@ -225,46 +480,26 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
           )}
         </form>
 
-        {/* Popover content anchored to the left button */}
-        {showParseModal && (
-          <div style={{ position: 'absolute', top: '-0.5rem', left: '0.5rem', zIndex: 1500, transform: 'translateY(-100%)' }}>
+  {/* Popover content rendered into body via portal to avoid clipping */}
+  {showParseModal && activePopoverAnchor === instanceId && typeof document !== 'undefined' && createPortal(
+          <div style={{ position: 'absolute', top: popoverStyle.top + 'px', left: popoverStyle.left + 'px', zIndex: 9999 }}>
             <div style={{ width: '220px', background: 'white', borderRadius: '0.75rem', boxShadow: '0 12px 30px rgba(2,6,23,0.08)', padding: '0.5rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                {/* menu items matching screenshot */}
-                <button onClick={() => { setParseMode('Add photos & files'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15V9a3 3 0 0 0-3-3H6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span style={{ color: '#111827' }}>Add photos & files</span>
+                <button onClick={() => { setParseMode('DOM Parse'); setShowParseModal(false); setActivePopoverAnchor(null); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ width: '1rem', textAlign: 'center' }}>🔎</span>
+                  <span style={{ color: '#111827' }}>DOM Parse</span>
                 </button>
-
-                <button onClick={() => { setParseMode('Deep research'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 21l-4.35-4.35" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="11" cy="11" r="6" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span style={{ color: '#111827' }}>Deep research</span>
+                <button onClick={() => { setParseMode('Bulk Parse'); setShowParseModal(false); setActivePopoverAnchor(null); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ width: '1rem', textAlign: 'center' }}>📄</span>
+                  <span style={{ color: '#111827' }}>Bulk Parse</span>
                 </button>
-
-                <button onClick={() => { setParseMode('Create image'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#111827" strokeWidth="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="#111827"/></svg>
-                  <span style={{ color: '#111827' }}>Create image</span>
-                </button>
-
-                <button onClick={() => { setParseMode('Agent mode'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v4" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M7 7h10v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V7z" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span style={{ color: '#111827' }}>Agent mode</span>
-                </button>
-
-                <button onClick={() => { setParseMode('Add sources'); setShowParseModal(false); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7.07 0l1.42-1.42" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 0 0-7.07 0L5.51 12.42" stroke="#111827" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span style={{ color: '#111827' }}>Add sources</span>
-                </button>
-
-                <div style={{ height: '8px', borderTop: '1px solid #f3f4f6', margin: '6px 0' }} />
-
-                <button onClick={() => setShowParseModal(false)} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', color: '#6b7280' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span>More</span>
+                <button onClick={() => { setParseMode('Site Parse'); setShowParseModal(false); setActivePopoverAnchor(null); }} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.6rem 0.75rem', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ width: '1rem', textAlign: 'center' }}>🌐</span>
+                  <span style={{ color: '#111827' }}>Site Parse</span>
                 </button>
               </div>
             </div>
-          </div>
+          </div>, document.body
         )}
       </div>
     );
@@ -273,6 +508,9 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   // InitialContent component
   const InitialContent = ({ url, onUrlChange, onSubmit, isVisible }) => {
     if (!isVisible) return null;
+
+    // Determine which submit handler to use
+    const handleFormSubmit = parseMode === 'Bulk Parse' ? handleBulkSubmit : onSubmit;
 
     return (
       <div style={{
@@ -291,13 +529,31 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
             {/* Outer chat container: input on left, Generate Resume on right */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{ flex: 1 }}>
-                <UrlInputForm url={url} onUrlChange={setUrl} onSubmit={onSubmit} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
+                {parseMode === 'Bulk Parse' ? (
+                  <BulkInputForm
+                    ref={bulkInputRef}
+                    onBulkSubmit={handleBulkSubmit}
+                    showParseModal={showParseModal}
+                    setShowParseModal={setShowParseModal}
+                    activePopoverAnchor={activePopoverAnchor}
+                    setActivePopoverAnchor={setActivePopoverAnchor}
+                  />
+                ) : (
+                  <UrlInputForm instanceId={'top'} url={url} onUrlChange={setUrl} onSubmit={onSubmit} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
+                )}
               </div>
 
               <div style={{ flexShrink: 0 }}>
                 <button
                   type="button"
-                  onClick={() => onSubmit({ preventDefault: () => {} })}
+                  onClick={() => {
+                    // If bulk mode, trigger the child's submit via ref
+                    if (parseMode === 'Bulk Parse' && bulkInputRef.current && typeof bulkInputRef.current.submit === 'function') {
+                      bulkInputRef.current.submit();
+                    } else {
+                      handleFormSubmit({ preventDefault: () => {} });
+                    }
+                  }}
                   style={{
                     background: 'linear-gradient(90deg, #7c3aed, #6d28d9, #5b21b6)',
                     backgroundSize: '200% 200%',
@@ -406,6 +662,86 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
         {/* Job Description Display */}
         <JobDescriptionDisplay jobData={jobData} onTryAnother={handleTryAnother} />
+
+        {/* Bulk Jobs Display - Full descriptions in white text */}
+        {bulkJobs.length > 0 && (
+          <div style={{ width: '100%', maxWidth: '56rem', marginTop: '1rem' }}>
+            <div style={{
+              color: 'white',
+              backgroundColor: 'transparent',
+              fontSize: '1.125rem',
+              lineHeight: '1.75',
+              fontFamily: 'system-ui, -apple-system, sans-serif'
+            }}>
+              {bulkJobs.map((job, index) => {
+                // Format job description similar to single URL scraping
+                const hasDescription = job.description && job.description.trim().length > 0;
+
+                // Show all jobs, even without descriptions (for debugging)
+                const metadata = [
+                  job.location,
+                  job.posted_date_text,
+                  job.applicants_detail || job.applicants
+                ].filter(Boolean).join(' · ');
+
+                const tags = [
+                  job.salary,
+                  job.work_type,
+                  job.employment_type
+                ].filter(Boolean).join(' · ');
+
+                return (
+                  <div key={index} style={{ marginBottom: '3rem' }}>
+                    {/* Job header */}
+                    <div style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+                      {job.company || 'Unknown Company'}
+                    </div>
+
+                    <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.75rem' }}>
+                      {job.title || 'Untitled Position'}
+                    </div>
+
+                    {metadata && (
+                      <div style={{ fontSize: '1rem', marginBottom: '0.5rem', opacity: 0.9 }}>
+                        {metadata}
+                      </div>
+                    )}
+
+                    {tags && (
+                      <div style={{ fontSize: '1rem', marginBottom: '1rem', opacity: 0.9 }}>
+                        {tags}
+                      </div>
+                    )}
+
+                    {/* Job description */}
+                    {hasDescription ? (
+                      <div style={{ marginTop: '1rem' }}>
+                        <div style={{ fontWeight: 700, marginTop: '1rem', marginBottom: '0.5rem' }}>
+                          About the job
+                        </div>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {job.description}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: '1rem', opacity: 0.6, fontStyle: 'italic' }}>
+                        [Description not available - check backend logs for details]
+                      </div>
+                    )}
+
+                    {/* Separator line between jobs */}
+                    {index < bulkJobs.length - 1 && (
+                      <div style={{
+                        borderTop: '1px solid rgba(255, 255, 255, 0.2)',
+                        marginTop: '2rem'
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Input */}
@@ -424,7 +760,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         transition: 'all 0.5s',
         display: isSubmitted ? 'block' : 'none'
       }}>
-        <UrlInputForm url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isBottom={true} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
+  <UrlInputForm instanceId={'bottom'} url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isBottom={true} showParseModal={showParseModal} setShowParseModal={setShowParseModal} parseMode={parseMode} />
       </div>
     </div>
   );

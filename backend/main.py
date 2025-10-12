@@ -16,8 +16,9 @@ from platforms.linkedin.parsers.parser import parse_linkedin_job
 from platforms.linkedin.utils.formatter import format_job_post
 from platforms.linkedin.scrapers.url_scraper import fetch_job_html
 
-# Import LinkedIn bulk router
+# Import LinkedIn bulk router and scraper
 from platforms.linkedin.utils import linkedin_bulk
+from platforms.linkedin.scrapers.linkedin_bulk_scraper import scrape_linkedin_jobs
 
 # -------------------------------------------------
 # App Setup
@@ -188,6 +189,70 @@ async def scrape_progress_socket(websocket: WebSocket):
                 }))
     except Exception as e:
         logger.warning(f"⚠️ WebSocket closed: {e}")
+
+# -------------------------------------------------
+# WebSocket Endpoint for Bulk Scraping
+# -------------------------------------------------
+@app.websocket("/ws/bulk-scrape")
+async def bulk_scrape_socket(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("✅ Bulk scrape WebSocket connected")
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            logger.info(f"📩 Received bulk scrape request: {raw}")
+
+            try:
+                data = json.loads(raw)
+                keyword = data.get("keyword")
+                location = data.get("location")
+                pages = data.get("pages", 1)
+
+                # Validate inputs
+                if not keyword or not location:
+                    await websocket.send_text(json.dumps({
+                        "status": "error",
+                        "message": "Missing 'keyword' or 'location' in payload"
+                    }))
+                    continue
+
+                # Start bulk scraping
+                await websocket.send_text(json.dumps({
+                    "status": "progress",
+                    "message": f"🔍 Starting bulk scrape: '{keyword}' in '{location}' ({pages} pages)"
+                }))
+
+                job_count = 0
+                async for result in scrape_linkedin_jobs(keyword, location, pages, fetch_full_description=True):
+                    await websocket.send_text(json.dumps(result))
+
+                    # Track job count
+                    if result.get("status") == "job":
+                        job_count += 1
+                        # Format the job data if description exists
+                        if result.get("data", {}).get("description"):
+                            logger.info(f"✅ Job {job_count}: {result['data'].get('title')} - {result['data'].get('company')}")
+
+                # Send completion message
+                await websocket.send_text(json.dumps({
+                    "status": "complete",
+                    "message": f"✅ Bulk scrape complete! Found {job_count} jobs."
+                }))
+
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({
+                    "status": "error",
+                    "message": "Invalid JSON received"
+                }))
+            except Exception as e:
+                logger.error(f"❌ Bulk scrape error: {e}")
+                await websocket.send_text(json.dumps({
+                    "status": "error",
+                    "message": str(e)
+                }))
+    except Exception as e:
+        logger.warning(f"⚠️ Bulk scrape WebSocket closed: {e}")
 
 # -------------------------------------------------
 # Run locally

@@ -33,31 +33,46 @@ def extract_job_id(url: str) -> str:
     print(f"❌ No job ID pattern matched for URL: {url}")
     return None
 
-async def fetch_full_job_description(job_id: str, client: httpx.AsyncClient, parse_description: bool = True) -> dict:
+async def fetch_full_job_description(job_id: str, client: httpx.AsyncClient, parse_description: bool = True, retry_count: int = 0) -> dict:
     """
-    Fetch full job description using LinkedIn's jobs-guest API.
+    Fetch full job description using LinkedIn's jobs-guest API with retry logic.
 
     Args:
         job_id (str): LinkedIn job posting ID
         client (httpx.AsyncClient): HTTP client to use
+        parse_description (bool): Whether to parse with LinkedIn parser
+        retry_count (int): Current retry attempt
 
     Returns:
         dict: Job description data or None if failed
     """
+    max_retries = 3
+    base_delay = 5  # Start with 5 second delay
+
     try:
         url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
         headers = {
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "accept-language": "en-US,en;q=0.9",
+            "accept-encoding": "gzip, deflate, br",
             "user-agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/118.0.0.0 Safari/537.36"
+                "Chrome/120.0.0.0 Safari/537.36"
             ),
+            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "cache-control": "max-age=0",
         }
 
         print(f"🔍 Fetching job description from: {url}")
-        response = await client.get(url, headers=headers, timeout=10.0)
+        response = await client.get(url, headers=headers, timeout=15.0, follow_redirects=True)
         response.raise_for_status()
         print(f"✅ Got response, status: {response.status_code}, length: {len(response.content)} bytes")
 
@@ -127,6 +142,20 @@ async def fetch_full_job_description(job_id: str, client: httpx.AsyncClient, par
         print(f"❌ No description content found for job {job_id}")
         return None
 
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            # Rate limited - implement exponential backoff
+            if retry_count < max_retries:
+                wait_time = base_delay * (2 ** retry_count) + random.uniform(0, 2)
+                print(f"⏳ Rate limited (429). Waiting {wait_time:.1f}s before retry {retry_count + 1}/{max_retries}...")
+                await asyncio.sleep(wait_time)
+                return await fetch_full_job_description(job_id, client, parse_description, retry_count + 1)
+            else:
+                print(f"❌ Max retries reached for job {job_id} after rate limiting")
+                return None
+        else:
+            print(f"❌ HTTP error fetching job {job_id}: {e.response.status_code}")
+            return None
     except Exception as e:
         print(f"❌ Error fetching full description for job {job_id}: {type(e).__name__}: {e}")
         import traceback
@@ -135,136 +164,114 @@ async def fetch_full_job_description(job_id: str, client: httpx.AsyncClient, par
 
 async def scrape_linkedin_jobs(keyword: str, location: str, pages: int = 3, fetch_full_description: bool = False):
     """
-    Scrape LinkedIn job postings from the public AJAX endpoint.
-
-    Args:
-        keyword (str): Job search keyword (e.g., "AI Engineer")
-        location (str): Job location (e.g., "United States")
-        pages (int): Number of result pages to scrape
-        fetch_full_description (bool): Whether to fetch full job descriptions (slower but more detailed)
-
-    Yields:
-        dict: Parsed job postings or progress updates
-            - status: 'job' | 'progress' | 'error'
-            - data (if status='job'): {url, title, company, location, publication_date, description (optional), description_html (optional)}
-            - message (if status='progress' | 'error'): Progress or error message
+    Scrape LinkedIn job postings - EXACT implementation from Apify blog.
     """
-
-    base_url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+    url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+    params = {
+        "keywords": keyword,
+        "location": location,
+        "trk": "public_jobs_jobs-search-bar_search-submit",
+        "start": "0"
+    }
     headers = {
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.9",
-        "user-agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/118.0.0.0 Safari/537.36"
-        ),
+        "priority": "u=1, i",
+        "sec-ch-ua": '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for page in range(pages):
-            yield {"status": "progress", "message": f"Scraping page {page + 1}/{pages}"}
+    # Iterate over each pagination page
+    for page in range(pages):
+        yield {"status": "progress", "message": f"Scraping page {page + 1}/{pages}"}
 
-            params = {
-                "keywords": keyword,
-                "location": location,
-                "trk": "public_jobs_jobs-search-bar_search-submit",
-                "start": str(page * 10),
+        async with httpx.AsyncClient() as client:
+            # Set the right pagination argument
+            params["start"] = str(page * 10)
+
+            # Perform a GET HTTP request to the target API
+            response = await client.get(url, headers=headers, params=params)
+
+        # Parse the HTML content returned by API
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Select all <li> job posting elements
+        job_li_elements = soup.select("li")
+
+        if not job_li_elements:
+            yield {"status": "progress", "message": "No listings found on this page."}
+            continue
+
+        # Iterate over them and scrape data from each of them
+        for job_li_element in job_li_elements:
+            # Scraping logic - EXACT from Apify blog
+            link_element = job_li_element.select_one('a[data-tracking-control-name="public_jobs_jserp-result_search-card"]')
+            link = link_element["href"] if link_element else None
+
+            title_element = job_li_element.select_one("h3.base-search-card__title")
+            title = title_element.text.strip() if title_element else None
+
+            company_element = job_li_element.select_one("h4.base-search-card__subtitle")
+            company = company_element.text.strip() if company_element else None
+
+            publication_date_element = job_li_element.select_one("time.job-search-card__listdate")
+            publication_date = publication_date_element["datetime"] if publication_date_element else None
+
+            # Populate a new job posting with the scraped data
+            job_posting = {
+                "url": link,
+                "title": title,
+                "company": company,
+                "publication_date": publication_date
             }
 
-            for attempt in range(3):
+            # If fetch_full_description is True, fetch the job page directly
+            if fetch_full_description and link:
                 try:
-                    response = await client.get(base_url, headers=headers, params=params)
-                    response.raise_for_status()
-                    break
+                    print(f"🔍 Fetching full job page: {link}")
+
+                    headers = {
+                        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "accept-language": "en-US,en;q=0.9",
+                        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    }
+
+                    async with httpx.AsyncClient() as job_client:
+                        response = await job_client.get(link, headers=headers, timeout=15.0, follow_redirects=True)
+                        response.raise_for_status()
+
+                    print(f"✅ Got job page, parsing with LinkedIn parser...")
+
+                    # Parse the full job page HTML with the LinkedIn parser
+                    from platforms.linkedin.parsers.parser import parse_linkedin_job
+                    parsed_data = parse_linkedin_job(response.text)
+
+                    if parsed_data and parsed_data.get('description'):
+                        job_posting['description'] = parsed_data['description']
+                        job_posting['salary'] = parsed_data.get('salary')
+                        job_posting['work_type'] = parsed_data.get('work_type')
+                        job_posting['employment_type'] = parsed_data.get('employment_type')
+                        job_posting['applicants'] = parsed_data.get('applicants')
+                        job_posting['location'] = parsed_data.get('location')
+                        job_posting['posted'] = parsed_data.get('posted')
+                        print(f"✅ Parsed job: {len(parsed_data.get('description', ''))} chars")
+                    else:
+                        print(f"⚠️ No description found in parsed data")
+
+                    # Small delay between requests
+                    await asyncio.sleep(random.uniform(2.0, 4.0))
+
                 except Exception as e:
-                    if attempt < 2:
-                        yield {"status": "progress", "message": f"Retry {attempt + 1}/3 due to {e}"}
-                        await asyncio.sleep(2)
-                    else:
-                        yield {"status": "error", "message": f"Failed to load page {page + 1}: {e}"}
-                        return
+                    print(f"❌ Error fetching job page {link}: {e}")
 
-            soup = BeautifulSoup(response.content, "html.parser")
-            job_li_elements = soup.select("li")
+            # Yield the job
+            yield {
+                "status": "job",
+                "data": job_posting
+            }
 
-            if not job_li_elements:
-                yield {"status": "progress", "message": "No listings found on this page."}
-                continue
-
-            for job_li_element in job_li_elements:
-                link_element = job_li_element.select_one(
-                    'a[data-tracking-control-name="public_jobs_jserp-result_search-card"]'
-                )
-                link = link_element["href"].strip() if link_element else None
-                if link and link.startswith("/"):
-                    link = f"https://www.linkedin.com{link}"
-
-                title_element = job_li_element.select_one("h3.base-search-card__title")
-                title = title_element.text.strip() if title_element else None
-
-                company_element = job_li_element.select_one("h4.base-search-card__subtitle")
-                company = company_element.text.strip() if company_element else None
-
-                location_element = job_li_element.select_one("span.job-search-card__location")
-                job_location = location_element.text.strip() if location_element else None
-
-                # Extract publication date - can be either datetime or relative text
-                publication_date_element = job_li_element.select_one("time.job-search-card__listdate")
-                publication_date = None
-                posted_date_text = None
-                if publication_date_element:
-                    publication_date = publication_date_element.get("datetime")
-                    posted_date_text = publication_date_element.text.strip()
-
-                # Extract applicant count
-                applicants_element = job_li_element.select_one("span.job-search-card__listdate--new")
-                if not applicants_element:
-                    applicants_element = job_li_element.select_one("li.job-search-card__listitem")
-
-                applicants = None
-                if applicants_element:
-                    applicants_text = applicants_element.text.strip()
-                    # Look for patterns like "10 applicants", "Over 100 applicants", etc.
-                    if "applicant" in applicants_text.lower():
-                        applicants = applicants_text
-
-                if not title and not link:
-                    continue
-
-                job_data = {
-                    "url": link,
-                    "title": title,
-                    "company": company,
-                    "location": job_location,
-                    "publication_date": publication_date,
-                    "posted_date_text": posted_date_text,  # e.g., "2 days ago"
-                    "applicants": applicants,  # e.g., "50 applicants"
-                }
-
-                # Optionally fetch full job description
-                if fetch_full_description and link:
-                    job_id = extract_job_id(link)
-                    print(f"🔍 Attempting to extract job ID from URL: {link}")
-                    print(f"📝 Extracted job ID: {job_id}")
-                    if job_id:
-                        yield {"status": "progress", "message": f"Fetching full description for: {title}"}
-                        full_description = await fetch_full_job_description(job_id, client)
-                        if full_description:
-                            print(f"✅ Successfully fetched description for {title} ({len(full_description.get('description', ''))} chars)")
-                            job_data.update(full_description)
-                        else:
-                            print(f"⚠️ No description returned for {title}")
-                        await asyncio.sleep(random.uniform(0.5, 1.5))  # Small delay between detail fetches
-                    else:
-                        print(f"❌ Could not extract job ID from URL: {link}")
-
-                yield {
-                    "status": "job",
-                    "data": job_data
-                }
-
-            yield {"status": "progress", "message": f"Found {len(job_li_elements)} listings on page {page + 1}"}
-            await asyncio.sleep(random.uniform(1.5, 3.5))
+        yield {"status": "progress", "message": f"Found {len(job_li_elements)} listings on page {page + 1}"}
