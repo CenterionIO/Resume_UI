@@ -163,26 +163,28 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   };
 
   // Bulk submit that accepts parameters (used by BulkInputForm via ref)
+  // Uses chained scraper: metadata + full descriptions
   const handleBulkSubmit = (keyword, location, pages) => {
     if (!keyword || !location) return;
 
-    console.log('Submitting bulk scrape:', keyword, location, pages);
+    console.log('Submitting bulk scrape with descriptions:', keyword, location, pages);
     onSubmissionChange(true);
     setJobData(null);
     setBulkJobs([]);
     setProgressMessages([]);
 
     try {
-      console.log('Connecting to bulk scrape WebSocket...');
+      console.log('Connecting to bulk with descriptions WebSocket...');
 
-      const ws = new WebSocket('ws://localhost:8000/ws/bulk-scrape');
+      const ws = new WebSocket('ws://localhost:8000/ws/bulk-with-descriptions');
 
       ws.onopen = () => {
-        console.log('✅ Bulk scrape WebSocket connected');
+        console.log('✅ Bulk with descriptions WebSocket connected');
         ws.send(JSON.stringify({
           keyword,
           location,
-          pages
+          pages,
+          delay: 2.0  // 2-second delay between description fetches
         }));
       };
 
@@ -197,7 +199,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
           }
 
           if (data.status === 'job') {
-            console.log('Job found:', data.data.title);
+            console.log('Job with description found:', data.data.title);
             setBulkJobs(prev => [...prev, data.data]);
           }
 
@@ -210,7 +212,6 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
           if (data.status === 'error') {
             console.error('❌ Bulk scrape error:', data.message);
             setProgressMessages(prev => [...prev, `❌ Error: ${data.message}`]);
-            ws.close();
           }
 
         } catch (parseError) {
@@ -663,7 +664,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         {/* Job Description Display */}
         <JobDescriptionDisplay jobData={jobData} onTryAnother={handleTryAnother} />
 
-        {/* Bulk Jobs Display - Full descriptions in white text */}
+        {/* Bulk Jobs Display - Structured fields in white text */}
         {bulkJobs.length > 0 && (
           <div style={{ width: '100%', maxWidth: '56rem', marginTop: '1rem' }}>
             <div style={{
@@ -674,58 +675,61 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
               fontFamily: 'system-ui, -apple-system, sans-serif'
             }}>
               {bulkJobs.map((job, index) => {
-                // Format job description similar to single URL scraping
-                const hasDescription = job.description && job.description.trim().length > 0;
-
-                // Show all jobs, even without descriptions (for debugging)
+                // Build metadata line
                 const metadata = [
                   job.location,
-                  job.posted_date_text,
-                  job.applicants_detail || job.applicants
+                  job.date_posted,
+                  job.actively_hiring
                 ].filter(Boolean).join(' · ');
 
-                const tags = [
-                  job.salary,
-                  job.work_type,
-                  job.employment_type
-                ].filter(Boolean).join(' · ');
+                const hasDescription = job.description && job.description.trim().length > 0;
 
                 return (
                   <div key={index} style={{ marginBottom: '3rem' }}>
-                    {/* Job header */}
+                    {/* Company name */}
                     <div style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>
                       {job.company || 'Unknown Company'}
                     </div>
 
+                    {/* Job title */}
                     <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.75rem' }}>
                       {job.title || 'Untitled Position'}
                     </div>
 
+                    {/* Metadata (location, date, hiring status) */}
                     {metadata && (
-                      <div style={{ fontSize: '1rem', marginBottom: '0.5rem', opacity: 0.9 }}>
+                      <div style={{ fontSize: '1rem', marginBottom: '0.75rem', opacity: 0.9 }}>
                         {metadata}
                       </div>
                     )}
 
-                    {tags && (
-                      <div style={{ fontSize: '1rem', marginBottom: '1rem', opacity: 0.9 }}>
-                        {tags}
+                    {/* Job URL - Use guest API URL (no login required) */}
+                    {job.guest_api_url && (
+                      <div style={{ fontSize: '0.875rem', marginBottom: '1rem', opacity: 0.8 }}>
+                        <a
+                          href={job.guest_api_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            textDecoration: 'underline',
+                            wordBreak: 'break-all'
+                          }}
+                        >
+                          View Job Posting
+                        </a>
                       </div>
                     )}
 
-                    {/* Job description */}
-                    {hasDescription ? (
+                    {/* Full Description (if available) */}
+                    {hasDescription && (
                       <div style={{ marginTop: '1rem' }}>
-                        <div style={{ fontWeight: 700, marginTop: '1rem', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>
                           About the job
                         </div>
-                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                        <div style={{ whiteSpace: 'pre-wrap', fontSize: '1rem', opacity: 0.95 }}>
                           {job.description}
                         </div>
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: '1rem', opacity: 0.6, fontStyle: 'italic' }}>
-                        [Description not available - check backend logs for details]
                       </div>
                     )}
 

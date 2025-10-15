@@ -19,6 +19,9 @@ from platforms.linkedin.scrapers.url_scraper import fetch_job_html
 # Import LinkedIn bulk router and scraper
 from platforms.linkedin.utils import linkedin_bulk
 from platforms.linkedin.scrapers.linkedin_bulk_scraper import scrape_linkedin_jobs
+from platforms.linkedin.scrapers.test_hardcoded_jobs import test_hardcoded_jobs
+from platforms.linkedin.scrapers.linkedin_bulk_scraper_test import scrape_linkedin_jobs_test
+from platforms.linkedin.scrapers.bulk_with_descriptions import scrape_jobs_with_descriptions
 
 # -------------------------------------------------
 # App Setup
@@ -253,6 +256,88 @@ async def bulk_scrape_socket(websocket: WebSocket):
                 }))
     except Exception as e:
         logger.warning(f"⚠️ Bulk scrape WebSocket closed: {e}")
+
+# -------------------------------------------------
+# WebSocket Endpoint for Testing Hardcoded Jobs
+# -------------------------------------------------
+@app.websocket("/ws/test-hardcoded")
+async def test_hardcoded_socket(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("✅ Test hardcoded jobs WebSocket connected")
+
+    try:
+        async for result in test_hardcoded_jobs():
+            await websocket.send_text(json.dumps(result))
+    except Exception as e:
+        logger.warning(f"⚠️ Test hardcoded WebSocket closed: {e}")
+
+# -------------------------------------------------
+# WebSocket Endpoint for Testing Bulk Scraper
+# -------------------------------------------------
+@app.websocket("/ws/test-bulk-scraper")
+async def test_bulk_scraper_socket(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("✅ Test bulk scraper WebSocket connected")
+
+    try:
+        raw = await websocket.receive_text()
+        logger.info(f"📩 Received test bulk scraper request: {raw}")
+
+        try:
+            data = json.loads(raw)
+            keyword = data.get("keyword", "Software Engineer")
+            location = data.get("location", "Seattle")
+            pages = data.get("pages", 1)
+
+            logger.info(f"🔍 Starting test bulk scrape: {keyword} in {location} ({pages} pages)")
+
+            async for result in scrape_linkedin_jobs_test(keyword, location, pages):
+                await websocket.send_text(json.dumps(result))
+
+        except json.JSONDecodeError:
+            await websocket.send_text(json.dumps({
+                "status": "error",
+                "message": "Invalid JSON received"
+            }))
+    except Exception as e:
+        logger.warning(f"⚠️ Test bulk scraper WebSocket closed: {e}")
+
+# -------------------------------------------------
+# WebSocket Endpoint for Chained Bulk Scraper with Descriptions
+# -------------------------------------------------
+@app.websocket("/ws/bulk-with-descriptions")
+async def bulk_with_descriptions_socket(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("✅ Bulk with descriptions WebSocket connected")
+
+    try:
+        raw = await websocket.receive_text()
+        logger.info(f"📩 Received bulk with descriptions request: {raw}")
+
+        try:
+            data = json.loads(raw)
+            keyword = data.get("keyword", "Software Engineer")
+            location = data.get("location", "Seattle")
+            pages = data.get("pages", 1)
+            delay = data.get("delay", 2.0)  # Delay between description fetches
+
+            logger.info(f"🔍 Starting chained scrape: {keyword} in {location} ({pages} pages)")
+
+            async for result in scrape_jobs_with_descriptions(keyword, location, pages, delay_between=delay):
+                await websocket.send_text(json.dumps(result))
+
+                # Log job completions
+                if result.get("status") == "job":
+                    data = result.get("data", {})
+                    logger.info(f"✅ Complete job: {data.get('title')} - {data.get('company')}")
+
+        except json.JSONDecodeError:
+            await websocket.send_text(json.dumps({
+                "status": "error",
+                "message": "Invalid JSON received"
+            }))
+    except Exception as e:
+        logger.warning(f"⚠️ Bulk with descriptions WebSocket closed: {e}")
 
 # -------------------------------------------------
 # Run locally
