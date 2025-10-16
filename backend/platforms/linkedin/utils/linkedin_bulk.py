@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, WebSocket
 import asyncio
 import json
-from platforms.linkedin.scrapers.linkedin_bulk_scraper import scrape_linkedin_jobs
+from platforms.linkedin.scrapers.linkedin_jobs import scrape_jobs_complete
 
 router = APIRouter(prefix="", tags=["LinkedIn Bulk"])
 
@@ -18,7 +18,8 @@ async def linkedin_bulk_search(keyword: str, location: str, pages: int, websocke
     """
     try:
         job_count = 0
-        async for result in scrape_linkedin_jobs(keyword, location, pages, fetch_full_description=fetch_full_description):
+        # Use scrape_jobs_complete with parser enabled for full description
+        async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=fetch_full_description):
             await websocket.send_text(json.dumps(result))
 
             # Track job count

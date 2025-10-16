@@ -18,9 +18,8 @@ from platforms.linkedin.scrapers.url_scraper import fetch_job_html
 
 # Import LinkedIn bulk router and scraper
 from platforms.linkedin.utils import linkedin_bulk
-from platforms.linkedin.scrapers.linkedin_bulk_scraper import scrape_linkedin_jobs
-from platforms.linkedin.scrapers.linkedin_bulk_scraper_test import scrape_linkedin_jobs_test
-from platforms.linkedin.scrapers.bulk_with_descriptions import scrape_jobs_with_descriptions
+from platforms.linkedin.scrapers.linkedin_search import search_jobs
+from platforms.linkedin.scrapers.linkedin_jobs import scrape_jobs_complete
 
 # -------------------------------------------------
 # App Setup
@@ -226,7 +225,7 @@ async def bulk_scrape_socket(websocket: WebSocket):
                 }))
 
                 job_count = 0
-                async for result in scrape_linkedin_jobs(keyword, location, pages, fetch_full_description=True):
+                async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=True):
                     await websocket.send_text(json.dumps(result))
 
                     # Track job count
@@ -276,7 +275,7 @@ async def test_bulk_scraper_socket(websocket: WebSocket):
 
             logger.info(f"🔍 Starting test bulk scrape: {keyword} in {location} ({pages} pages)")
 
-            async for result in scrape_linkedin_jobs_test(keyword, location, pages):
+            async for result in search_jobs(keyword, location, pages):
                 await websocket.send_text(json.dumps(result))
 
         except json.JSONDecodeError:
@@ -308,7 +307,7 @@ async def bulk_with_descriptions_socket(websocket: WebSocket):
 
             logger.info(f"🔍 Starting chained scrape: {keyword} in {location} ({pages} pages)")
 
-            async for result in scrape_jobs_with_descriptions(keyword, location, pages, delay_between=delay):
+            async for result in scrape_jobs_complete(keyword, location, pages, delay_between=delay, use_parser=True):
                 await websocket.send_text(json.dumps(result))
 
                 # Log job completions
