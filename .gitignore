@@ -53,3 +53,10 @@ RUI/
 # Production builds
 *.tgz
 *.tar.gz
+
+# Python: ignore caches and compiled files
+__pycache__/
+*.py[cod]
+# optional: eggs/build artifacts
+*.egg-info/
+

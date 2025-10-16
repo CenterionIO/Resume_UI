@@ -16,9 +16,8 @@ from platforms.linkedin.parsers.parser import parse_linkedin_job
 from platforms.linkedin.formatters.formatter import format_job_post
 from platforms.linkedin.scrapers.url_scraper import fetch_job_html
 
-# Import LinkedIn bulk router and workflow managers
-from platforms.linkedin.utils import linkedin_bulk
-from platforms.linkedin.scrapers.linkedin_search import search_jobs
+# Import LinkedIn workflow managers and scrapers
+from platforms.linkedin.scrapers.bulk_scraper import search_jobs
 from platforms.linkedin.workflow_managers.bulk_manager import scrape_jobs_complete
 
 # -------------------------------------------------
@@ -34,9 +33,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Register Routers
-app.include_router(linkedin_bulk.router, prefix="/platforms/linkedin")
 
 # Logger Setup
 logging.basicConfig(level=logging.INFO)

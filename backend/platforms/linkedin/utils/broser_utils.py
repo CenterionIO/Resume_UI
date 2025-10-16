@@ -3,7 +3,7 @@ import asyncio
 import random
 from playwright.async_api import async_playwright # type: ignore
 from core.config import BROWSER_CONFIG
-from utils.session_manager import session_manager
+from platforms.linkedin.workflow_managers.session_manager import session_manager
 
 class BrowserUtils:
     def __init__(self):

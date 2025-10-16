@@ -4,7 +4,7 @@ Simple URL scraper using Playwright to fetch LinkedIn job HTML.
 import logging
 from playwright.async_api import async_playwright  # type: ignore
 from platforms.linkedin.utils.linkedin_login import linkedin_login
-from platforms.linkedin.utils.session_manager import session_manager
+from platforms.linkedin.workflow_managers.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ import json
 import asyncio
 import random
 from playwright.async_api import Page, BrowserContext # type: ignore
-from platforms.linkedin.utils.session_manager import session_manager
+from platforms.linkedin.workflow_managers.session_manager import session_manager
 
 class LinkedInLogin:
     def __init__(self):
