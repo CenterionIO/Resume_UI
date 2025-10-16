@@ -14,7 +14,7 @@ load_dotenv(dotenv_path=env_path)
 # Import parsers and scrapers
 from platforms.linkedin.parsers.single_parser import parse_linkedin_job
 from platforms.linkedin.formatters.single_formatter import format_job_post
-from platforms.linkedin.scrapers.single_scraper import fetch_job_html
+from platforms.linkedin.workflow_managers.single_manager import scrape_single_job
 
 # Import LinkedIn workflow managers and scrapers
 from platforms.linkedin.scrapers.bulk_scraper import search_jobs
@@ -132,7 +132,7 @@ async def scrape_progress_socket(websocket: WebSocket):
                     }))
 
                     try:
-                        html_content = await fetch_job_html(url)
+                        html_content = await scrape_single_job(url)
                         await websocket.send_text(json.dumps({
                             "type": "progress",
                             "message": f"✅ Page loaded, parsing with {parser_type}..."
