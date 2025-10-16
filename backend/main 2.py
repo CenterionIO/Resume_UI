@@ -12,8 +12,8 @@ env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Import parsers and scrapers
-from platforms.linkedin.parsers.single_parser import parse_linkedin_job
-from platforms.linkedin.formatters.single_formatter import format_job_post
+from platforms.linkedin.parsers.parser import parse_linkedin_job
+from platforms.linkedin.formatters.formatter import format_job_post
 from platforms.linkedin.scrapers.single_scraper import fetch_job_html
 
 # Import LinkedIn workflow managers and scrapers
