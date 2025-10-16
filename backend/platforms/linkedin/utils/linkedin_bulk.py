@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, WebSocket
 import asyncio
 import json
-from platforms.linkedin.scrapers.linkedin_jobs import scrape_jobs_complete
+from platforms.linkedin.workflow_managers.bulk_manager import scrape_jobs_complete
 
 router = APIRouter(prefix="", tags=["LinkedIn Bulk"])
 
