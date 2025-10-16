@@ -5,7 +5,7 @@ Orchestrates the complete bulk scraping workflow:
 2. Fetch full details for each job
 3. Merge and return complete job data
 """
-from platforms.linkedin.scrapers.bulk_scraper import search_jobs, fetch_job_details
+from platforms.linkedin.content_management.scrapers.bulk_scraper import search_jobs, fetch_job_details
 
 
 async def scrape_jobs_complete(keyword: str, location: str, pages: int = 1, delay_between: float = 2.0, use_parser: bool = False):

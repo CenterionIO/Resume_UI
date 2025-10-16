@@ -15,9 +15,9 @@ This manager coordinates session_manager, login, and the scraping tool.
 """
 import logging
 from playwright.async_api import async_playwright  # type: ignore
-from platforms.linkedin.workflow_managers.browser.login.user_credentials import linkedin_login
-from platforms.linkedin.workflow_managers.browser.session_management.manager import session_manager
-from platforms.linkedin.scrapers.playwright_scraper import fetch_page_html
+from platforms.linkedin.process_management.browser.login.user_credentials import linkedin_login
+from platforms.linkedin.process_management.browser.session_management.manager import session_manager
+from platforms.linkedin.content_management.scrapers.playwright_scraper import fetch_page_html
 
 logger = logging.getLogger(__name__)
 

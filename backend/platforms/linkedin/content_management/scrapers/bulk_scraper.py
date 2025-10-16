@@ -199,7 +199,7 @@ async def fetch_job_details(job_id: str, delay: float = 0, use_parser: bool = Fa
 
         # Use sophisticated parser if requested
         if use_parser:
-            from platforms.linkedin.parsers.single_parser import parse_linkedin_job
+            from platforms.linkedin.content_management.parsers.single_parser import parse_linkedin_job
             parsed_data = parse_linkedin_job(response.text)
 
             logger.info(f"Parser returned data for job {job_id}: {parsed_data is not None}")
