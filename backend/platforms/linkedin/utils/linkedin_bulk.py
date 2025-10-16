@@ -18,8 +18,8 @@ async def linkedin_bulk_search(keyword: str, location: str, pages: int, websocke
     """
     try:
         job_count = 0
-        # Use scrape_jobs_complete with parser enabled for full description
-        async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=fetch_full_description):
+        # Use scrape_jobs_complete with BeautifulSoup (not parser) for guest API
+        async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=False):
             await websocket.send_text(json.dumps(result))
 
             # Track job count

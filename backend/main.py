@@ -225,7 +225,7 @@ async def bulk_scrape_socket(websocket: WebSocket):
                 }))
 
                 job_count = 0
-                async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=True):
+                async for result in scrape_jobs_complete(keyword, location, pages, delay_between=2.0, use_parser=False):
                     await websocket.send_text(json.dumps(result))
 
                     # Track job count
@@ -307,7 +307,7 @@ async def bulk_with_descriptions_socket(websocket: WebSocket):
 
             logger.info(f"🔍 Starting chained scrape: {keyword} in {location} ({pages} pages)")
 
-            async for result in scrape_jobs_complete(keyword, location, pages, delay_between=delay, use_parser=True):
+            async for result in scrape_jobs_complete(keyword, location, pages, delay_between=delay, use_parser=False):
                 await websocket.send_text(json.dumps(result))
 
                 # Log job completions

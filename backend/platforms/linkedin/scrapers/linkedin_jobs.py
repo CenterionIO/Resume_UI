@@ -12,14 +12,16 @@ from .linkedin_search import search_jobs
 logger = logging.getLogger(__name__)
 
 
-async def fetch_job_details(job_id: str, delay: float = 0, use_parser: bool = True):
+async def fetch_job_details(job_id: str, delay: float = 0, use_parser: bool = False):
     """
     Fetch full job details from LinkedIn guest API.
 
     Args:
         job_id (str): LinkedIn job posting ID
         delay (float): Delay before fetching (to avoid rate limiting)
-        use_parser (bool): Whether to use sophisticated parser.py (default: True)
+        use_parser (bool): Whether to use sophisticated parser.py (default: False)
+                          Note: Parser is designed for Playwright HTML, not guest API HTML.
+                          Use False for guest API responses.
 
     Returns:
         dict: Complete job data with description, or error info
@@ -144,7 +146,7 @@ async def fetch_job_details(job_id: str, delay: float = 0, use_parser: bool = Tr
         }
 
 
-async def scrape_jobs_complete(keyword: str, location: str, pages: int = 1, delay_between: float = 2.0, use_parser: bool = True):
+async def scrape_jobs_complete(keyword: str, location: str, pages: int = 1, delay_between: float = 2.0, use_parser: bool = False):
     """
     Complete job scraping workflow:
     1. Search for jobs (get metadata + job IDs)
@@ -156,7 +158,9 @@ async def scrape_jobs_complete(keyword: str, location: str, pages: int = 1, dela
         location (str): Job location
         pages (int): Number of search pages to scrape
         delay_between (float): Delay between fetching individual jobs (default: 2s)
-        use_parser (bool): Use sophisticated parser.py for better formatting (default: True)
+        use_parser (bool): Use sophisticated parser.py (default: False)
+                          Note: Parser is designed for Playwright HTML, not guest API.
+                          Set to False for guest API (bulk scraping).
 
     Yields:
         dict: Progress updates and complete job data
