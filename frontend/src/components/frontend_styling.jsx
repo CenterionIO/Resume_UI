@@ -1,6 +1,6 @@
 import React from 'react';
 
-const JobDescriptionDisplay = ({ jobData, onTryAnother }) => {
+const Frontend_Styling = ({ jobData, onTryAnother }) => {
   if (!jobData) return null;
 
   // Process the job data to add bold formatting to headers
@@ -140,4 +140,4 @@ const JobDescriptionDisplay = ({ jobData, onTryAnother }) => {
   );
 };
 
-export default JobDescriptionDisplay;
+export default Frontend_Styling;

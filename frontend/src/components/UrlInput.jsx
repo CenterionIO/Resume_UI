@@ -1,6 +1,7 @@
 import React, { useState, memo, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from 'react-dom';
-import JobDescriptionDisplay from "./JobDescriptionDisplay";
+import Frontend_Styling from "./frontend_styling";
+import Job_Progress_Display from "./job_progress_display";
 
 // Move BulkInputForm to module scope so it isn't re-declared on every UrlInput render.
 const BulkInputForm = memo(forwardRef(({
@@ -124,41 +125,22 @@ const BulkInputForm = memo(forwardRef(({
 
 const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
   const [url, setUrl] = useState('');
-  const [progressMessages, setProgressMessages] = useState([]);
   const [jobData, setJobData] = useState(null);
   const [showParseModal, setShowParseModal] = useState(false);
   const [parseMode, setParseMode] = useState('DOM Parse');
   const [activePopoverAnchor, setActivePopoverAnchor] = useState(null);
+  const [showResults, setShowResults] = useState(false);
 
   // Bulk scrape state
-  const [bulkKeyword, setBulkKeyword] = useState('');
-  const [bulkLocation, setBulkLocation] = useState('');
-  const [bulkPages, setBulkPages] = useState(1);
   const [bulkJobs, setBulkJobs] = useState([]);
   const bulkInputRef = useRef(null);
-
-  // Progress update text configuration
-  const progressText = {
-    wsConnecting: 'Testing backend connection...',
-    wsConnected: '✅ WebSocket connected',
-    wsConnectionFailed: '❌ WebSocket connection failed',
-    wsError: '❌ Error setting up WebSocket:',
-    scrapingComplete: '✅ Scraping completed!',
-    scrapingError: '❌ Scraping error:',
-    newSession: '🔐 New session created',
-    sessionFound: '🔐 Existing session found',
-    starting: 'Starting...',
-    connectionFailed: 'Connection failed',
-    mockDataFallback: (url) => `WebSocket connection failed. Using mock data for: ${url}\n\n🏢 **Company:** Example Corp\n📝 **Title:** Senior Developer\n📍 **Location:** Remote\n💰 **Salary:** $120,000 - $160,000\n\nThis is mock data because the backend connection failed.`,
-    errorFallback: (error, url) => `Error: ${error}\n\nUsing fallback mock data for: ${url}`
-  };
 
   // Handler for "Try Another Job" button
   const handleTryAnother = () => {
     setUrl('');
-    setProgressMessages([]);
     setJobData(null);
     setBulkJobs([]);
+    setShowResults(false);
     onSubmissionChange(false);
   };
 
@@ -171,7 +153,7 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     onSubmissionChange(true);
     setJobData(null);
     setBulkJobs([]);
-    setProgressMessages([]);
+    setShowResults(false);
 
     try {
       console.log('Connecting to bulk with descriptions WebSocket...');
@@ -195,7 +177,6 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
           if (data.message) {
             console.log('Progress message:', data.message);
-            setProgressMessages(prev => [...prev, data.message]);
           }
 
           if (data.status === 'job') {
@@ -205,13 +186,12 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
           if (data.status === 'complete') {
             console.log('✅ Bulk scraping complete');
-            setProgressMessages(prev => [...prev, data.message]);
+            setShowResults(true);
             ws.close();
           }
 
           if (data.status === 'error') {
             console.error('❌ Bulk scrape error:', data.message);
-            setProgressMessages(prev => [...prev, `❌ Error: ${data.message}`]);
           }
 
         } catch (parseError) {
@@ -221,7 +201,6 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
       ws.onerror = (error) => {
         console.error('❌ Bulk scrape WebSocket error:', error);
-        setProgressMessages(prev => [...prev, '❌ WebSocket connection failed']);
       };
 
       ws.onclose = (event) => {
@@ -230,7 +209,6 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
     } catch (error) {
       console.error('❌ Error setting up bulk scrape WebSocket:', error);
-      setProgressMessages(prev => [...prev, `❌ Error: ${error.message}`]);
     }
   };
 
@@ -241,15 +219,15 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
     console.log('Submitting URL:', url);
     onSubmissionChange(true);
     setJobData(null);
-    setProgressMessages([]);
+    setShowResults(false);
 
     try {
-      console.log(progressText.wsConnecting);
+      console.log('Testing backend connection...');
 
       const ws = new WebSocket('ws://localhost:8000/ws/scrape-progress');
 
       ws.onopen = () => {
-        console.log(progressText.wsConnected);
+        console.log('✅ WebSocket connected');
         ws.send(JSON.stringify({ url: url }));
       };
 
@@ -260,33 +238,28 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
 
           if (data.message) {
             console.log('Progress message:', data.message);
-            setProgressMessages(prev => [...prev, data.message]);
           }
 
           if (data.type === 'complete') {
-            console.log(progressText.scrapingComplete);
+            console.log('✅ Scraping completed!');
 
-            // ✅ Use backend’s parsed HTML directly
+            // ✅ Use backend's parsed HTML directly
             setJobData(data.job_data || "Job description content would appear here");
-
-            setProgressMessages(prev => [...prev, progressText.scrapingComplete]);
+            setShowResults(true);
             ws.close();
           }
 
           if (data.type === 'error') {
-            console.error(progressText.scrapingError, data.message);
-            setProgressMessages(prev => [...prev, `${progressText.scrapingError} ${data.message}`]);
+            console.error('❌ Scraping error:', data.message);
             ws.close();
           }
 
           if (data.type === 'new_session') {
             console.log('Session update:', data.message);
-            setProgressMessages(prev => [...prev, `${progressText.newSession}: ${data.message}`]);
           }
 
           if (data.type === 'session_found') {
             console.log('Session update:', data.message);
-            setProgressMessages(prev => [...prev, `${progressText.sessionFound}: ${data.message}`]);
           }
 
         } catch (parseError) {
@@ -295,9 +268,10 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
       };
 
       ws.onerror = (error) => {
-        console.error(progressText.wsConnectionFailed, error);
-        setProgressMessages(prev => [...prev, progressText.wsConnectionFailed]);
-        setJobData(progressText.mockDataFallback(url));
+        console.error('❌ WebSocket connection failed', error);
+        // Fallback mock data
+        setJobData(`WebSocket connection failed. Using mock data for: ${url}\n\n🏢 **Company:** Example Corp\n📝 **Title:** Senior Developer\n📍 **Location:** Remote\n💰 **Salary:** $120,000 - $160,000\n\nThis is mock data because the backend connection failed.`);
+        setShowResults(true);
       };
 
       ws.onclose = (event) => {
@@ -305,46 +279,11 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
       };
 
     } catch (error) {
-      console.error(progressText.wsError, error);
-      setProgressMessages(prev => [...prev, `${progressText.wsError} ${error.message}`]);
-      setJobData(progressText.errorFallback(error.message, url));
+      console.error('❌ Error setting up WebSocket:', error);
+      setJobData(`Error: ${error.message}\n\nUsing fallback mock data for: ${url}`);
+      setShowResults(true);
     }
   };
-
-  // ProgressDisplay component
-  const ProgressDisplay = ({ progressMessages, jobData }) => {
-    const currentMessage = progressMessages.length > 0 ? progressMessages[progressMessages.length - 1] : progressText.starting;
-
-    return (
-      <div style={{
-        width: '100%',
-        maxWidth: '48rem',
-        flex: 1,
-        overflowY: 'auto',
-        marginBottom: '1rem',
-        textAlign: 'left',
-        paddingLeft: '1rem'
-      }}>
-        <div style={{
-          background: 'linear-gradient(90deg, #ffffff, #d1d5db, #ffffff)',
-          backgroundSize: '200% 200%',
-          WebkitBackgroundClip: 'text',
-          backgroundClip: 'text',
-          color: 'transparent',
-          animation: 'gradientAnimation 3s ease infinite',
-          padding: '0.5rem 1rem',
-          borderRadius: '0.5rem',
-          display: 'inline-block',
-          fontSize: '1.125rem',
-          fontWeight: '500'
-        }}>
-          {currentMessage}
-        </div>
-      </div>
-    );
-  };
-
-  
 
   // UrlInputForm component (memoized)
   const UrlInputForm = memo(({ instanceId = 'top', url, onUrlChange, onSubmit, isBottom = false, showParseModal, setShowParseModal, parseMode }) => {
@@ -655,17 +594,19 @@ const UrlInput = ({ onSubmissionChange, isSubmitted }) => {
         <InitialContent url={url} onUrlChange={setUrl} onSubmit={handleSubmit} isVisible={!isSubmitted} />
 
         {/* Progress Display */}
-        {isSubmitted && (
-          <div style={{ width: '100%', marginBottom: '1rem' }}>
-            <ProgressDisplay progressMessages={progressMessages} jobData={jobData} />
-          </div>
+        {isSubmitted && !showResults && (
+          <Job_Progress_Display
+            scrapeType={parseMode === 'Bulk Parse' ? 'bulk_scrape' : 'single_scrape'}
+            isActive={true}
+            onSequenceComplete={() => setShowResults(true)}
+          />
         )}
 
         {/* Job Description Display */}
-        <JobDescriptionDisplay jobData={jobData} onTryAnother={handleTryAnother} />
+        {showResults && <Frontend_Styling jobData={jobData} onTryAnother={handleTryAnother} />}
 
         {/* Bulk Jobs Display - Structured fields in white text */}
-        {bulkJobs.length > 0 && (
+        {showResults && bulkJobs.length > 0 && (
           <div style={{ width: '100%', maxWidth: '56rem', marginTop: '1rem' }}>
             <div style={{
               color: 'white',

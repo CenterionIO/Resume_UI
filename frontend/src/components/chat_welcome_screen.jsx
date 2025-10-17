@@ -1,6 +1,6 @@
 import React from 'react';
 
-const InitialContent = ({ onSubmit }) => {
+const Chat_Welcome_Screen = ({ onSubmit }) => {
   const styles = {
     container: {
       width: '100%',
@@ -133,4 +133,4 @@ const InitialContent = ({ onSubmit }) => {
   );
 };
 
-export default InitialContent;
+export default Chat_Welcome_Screen;
